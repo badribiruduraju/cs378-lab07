@@ -9,7 +9,7 @@
 #include <filesystem>
 
 #define HOST "127.0.0.1"
-#define PORT 42069
+#define PORT 5009
 
 
 int main(){
@@ -20,11 +20,13 @@ int main(){
 
     std::string s = "";
     struct sockaddr_in my_addr;
+     my_addr.sin_family=AF_INET;
     my_addr.sin_port = htons(PORT);
     my_addr.sin_addr.s_addr = inet_addr(HOST);
     memset(&(my_addr.sin_zero),'\0',sizeof(my_addr.sin_zero));
 
     struct sockaddr_in ser_addr;
+    ser_addr.sin_family=AF_INET;
     ser_addr.sin_port = htons(PORT-9);
     ser_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
     memset(&(ser_addr.sin_zero),'\0',sizeof(ser_addr.sin_zero));
