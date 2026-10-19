@@ -69,8 +69,8 @@ class VN {
 
 
     public static void main(String[] args) {
-        String server_ipaddr=args[1];
-        int my_udp_port= Integer.parseInt(args[2]);
+        String server_ipaddr=args[0];
+        int my_udp_port= Integer.parseInt(args[1]);
 
         InetAddress local =null;
         try {
@@ -145,8 +145,6 @@ class VN {
             System.exit(1);
         }
 
-
-        //main LSP loop
 
     }
 
