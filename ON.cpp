@@ -43,6 +43,7 @@ int pushRow(std::string& s, std::vector<int>& ans, int zer){
             lws = 0;
         }
     }
+    ans.pop_back();
     return 1;
 }
 
