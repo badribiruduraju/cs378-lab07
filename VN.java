@@ -2,8 +2,8 @@
 import java.io.*;
 import java.net.*;
 import java.nio.ByteBuffer;
+import java.nio.channels.*;
 import java.util.*;
-
 class Neighbour {
     char node;
     String ip;
@@ -19,49 +19,55 @@ class Neighbour {
 }
 
 class TCPConnection implements AutoCloseable {
-    private Socket socket;
-    private DataInputStream in;
-    private DataOutputStream out;
-
+    private SocketChannel channel;
+ 
     public TCPConnection(String myIP,int myPort,String serverIP,int serverPort) throws IOException {
-        socket = new Socket();
-        socket.bind(new InetSocketAddress(myIP, myPort));
-        socket.connect(new InetSocketAddress(serverIP, serverPort));
-        in = new DataInputStream(socket.getInputStream());
-        out = new DataOutputStream(socket.getOutputStream());
+        channel = SocketChannel.open();
+        channel.bind(new InetSocketAddress(myIP, myPort));
+        channel.connect(new InetSocketAddress(serverIP, serverPort));   // blocking connect
     }
-
+ 
     public void send(byte[] data_inbytes) throws IOException {
-        out.write(data_inbytes);
-        out.flush();
-    }
-
-    //read whatever available
-    public String receive() throws IOException {
-        byte[] buf = new byte[1024];
-        int count = in.read(buf);
-        if (count == -1) {
-            return null;
+        ByteBuffer b = ByteBuffer.wrap(data_inbytes);
+        while (b.hasRemaining()) {
+            channel.write(b);
         }
-        String ans=new String(buf, 0, count, "UTF-8");
-        return ans;
+    }
+ 
+    //read n bytes, wait until you read n (works only while the channel is still in blocking mode)
+    public byte[] receiveBytes(int n) throws IOException {
+        ByteBuffer b = ByteBuffer.allocate(n);
+        while (b.hasRemaining()) {
+            if (channel.read(b) == -1) {
+                throw new EOFException("connection closed before " + n + " bytes arrived");
+            }
+        }
+        return b.array();
     }
 
-    //read n bytes, wait until you read n , if you cant read till n
-    public byte[] receiveBytes(int n) throws IOException {
-        byte[] buf = new byte[n];
-        in.readFully(buf);
-        return buf;
+    public SocketChannel getChannel() {
+        return channel;
     }
     
     @Override
     public void close() throws IOException {
-        socket.close();
+        channel.close();
     }
 }
 
 
 class VN {
+
+    static final int TUPLE_SIZE = 13;          // node(1) + ip(4) + port(2) + cost(4)
+    static final long PERIOD_MS = 10000;
+    static char myId = 0;                      // 0 until the first LINK-STATE arrives
+    static int mySeq = 0;
+    static List<Neighbour> neighbours = new ArrayList<>();          // my direct neighbours (cost > 0)
+    static Map<Character, Integer> lastSeq = new TreeMap<>();       // origin -> latest sequence number seen
+    static Map<Character, List<Neighbour>> lsdb = new TreeMap<>();  // origin -> its neighbour list
+    static DatagramChannel udp;       // periodic LSP + graph print
+
+
     public static void main(String[] args) {
         String server_ipaddr=args[1];
         int my_udp_port= Integer.parseInt(args[2]);
@@ -75,8 +81,9 @@ class VN {
         }
         String my_ip = local.getHostAddress();
 
-        DatagramSocket my_udp_socket=null;
+        
         //UDP connection for myself
+        DatagramSocket my_udp_socket=null;
         try{
             my_udp_socket = new DatagramSocket(my_udp_port);
         }
@@ -109,25 +116,38 @@ class VN {
         //Receive adjacency list from the ON
         try {
             int count = on_connection.receiveBytes(1)[0] & 0xFF;
-            List<Neighbour> adjacency = new ArrayList<>();
+            neighbours = new ArrayList<>();
             for (int i = 0; i < count; i++) {
-                ByteBuffer buf = ByteBuffer.wrap(on_connection.receiveBytes(11));
+                ByteBuffer buf = ByteBuffer.wrap(on_connection.receiveBytes(TUPLE_SIZE));   // 13 bytes
                 // buf.order(ByteOrder.BIG_ENDIAN);   // already the default, shown for clarity
                 char node = (char) buf.get();                        // 1 byte
                 byte[] ipBytes = new byte[4];
                 buf.get(ipBytes);                                    // 4 bytes, already in network order
                 String ip = InetAddress.getByAddress(ipBytes).getHostAddress();
-                int port = buf.getShort() & 0xFFFF;                  // like ntohs
-                int cost = buf.getInt();                             // like ntohl
+                int port = buf.getInt();                             // 4 bytes, like ntohl
+                int cost = buf.getInt();                             // 4 bytes, like ntohl
 
-                adjacency.add(new Neighbour(node, ip, port, cost));
+                if (cost == 0) {
+                    myId = node;                                     // the zero-cost tuple is me: my allocated letter
+                } else {
+                    neighbours.add(new Neighbour(node, ip, port, cost));
+                }
             }
+            //Debugging purposes
+            // StringBuilder sb = new StringBuilder();
+            // sb.append(myId).append("=0");
+            // for (Neighbour n : neighbours) {
+            //     sb.append(",").append(n.node).append("=").append(n.cost);
+            // }
+            // System.out.println(sb);
         } catch (IOException e) {
             System.out.println("Failed to read LINK-STATE: " + e.getMessage());
             System.exit(1);
         }
 
 
+        //main LSP loop
 
     }
+
 }
