@@ -23,8 +23,10 @@ class TCPConnection implements AutoCloseable {
  
     public TCPConnection(String myIP,int myPort,String serverIP,int serverPort) throws IOException {
         channel = SocketChannel.open();
-        channel.bind(new InetSocketAddress(myIP, myPort));
+        channel.bind(new InetSocketAddress(myIP, 0));
+        //System.out.print(" waiting to connect");
         channel.connect(new InetSocketAddress(serverIP, serverPort));   // blocking connect
+        //System.out.print("connected");
     }
  
     public void send(byte[] data_inbytes) throws IOException {
@@ -72,14 +74,14 @@ class VN {
         String server_ipaddr=args[0];
         int my_udp_port= Integer.parseInt(args[1]);
 
-        InetAddress local =null;
-        try {
-            local=InetAddress.getLocalHost();
-        } catch (Exception e) {
+        String my_ip = null;
+        try (DatagramSocket probe = new DatagramSocket()) {
+            probe.connect(InetAddress.getByName(server_ipaddr), 5000);
+            my_ip = probe.getLocalAddress().getHostAddress();
+        } catch (IOException e) {
             System.out.println("Unable to get my own IP address");
             System.exit(1);
         }
-        String my_ip = local.getHostAddress();
 
         
         //UDP connection for myself
@@ -93,7 +95,7 @@ class VN {
         
         try {
             udp = DatagramChannel.open();
-            udp.bind(new InetSocketAddress(my_udp_port));
+            udp.bind(new InetSocketAddress(my_ip,my_udp_port));
         } catch (IOException e) {
             System.out.println("UDP binding failed");
             System.exit(1);
