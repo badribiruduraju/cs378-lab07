@@ -19,7 +19,7 @@ class Neighbour {
 }
 
 class TCPConnection implements AutoCloseable {
-    private SocketChannel channel;
+    private final SocketChannel channel;
  
     public TCPConnection(String myIP,int myPort,String serverIP,int serverPort) throws IOException {
         channel = SocketChannel.open();
@@ -60,11 +60,11 @@ class VN {
 
     static final int TUPLE_SIZE = 13;          // node(1) + ip(4) + port(2) + cost(4)
     static final long PERIOD_MS = 10000;
-    static char myId = 0;                      // 0 until the first LINK-STATE arrives
+    static char myId = 0;                   
     static int mySeq = 0;
-    static List<Neighbour> neighbours = new ArrayList<>();          // my direct neighbours (cost > 0)
-    static Map<Character, Integer> lastSeq = new TreeMap<>();       // origin -> latest sequence number seen
-    static Map<Character, List<Neighbour>> lsdb = new TreeMap<>();  // origin -> its neighbour list
+    static List<Neighbour> neighbours = new ArrayList<>();          // my neighbours
+    static Map<Character, Integer> lastSeq = new TreeMap<>();       // sequence numbers i have seen till now
+    static Map<Character, List<Neighbour>> lsdb = new TreeMap<>();  // list state storage
     static DatagramChannel udp;       // periodic LSP + graph print
 
 
@@ -122,16 +122,13 @@ class VN {
                 // buf.order(ByteOrder.BIG_ENDIAN);   // already the default, shown for clarity
                 char node = (char) buf.get();                        // 1 byte
                 byte[] ipBytes = new byte[4];
-                buf.get(ipBytes);                                    // 4 bytes, already in network order
+                buf.get(ipBytes);                                    // 4 bytes
                 String ip = InetAddress.getByAddress(ipBytes).getHostAddress();
-                int port = buf.getInt();                             // 4 bytes, like ntohl
-                int cost = buf.getInt();                             // 4 bytes, like ntohl
+                int port = buf.getInt();                             // 4 bytes
+                int cost = buf.getInt();                             // 4 bytes
 
-                if (cost == 0) {
-                    myId = node;                                     // the zero-cost tuple is me: my allocated letter
-                } else {
-                    neighbours.add(new Neighbour(node, ip, port, cost));
-                }
+                if (cost==0) myId = node;                            // the zero-cost tuple is myself
+                else neighbours.add(new Neighbour(node, ip, port, cost));
             }
             //Debugging purposes
             // StringBuilder sb = new StringBuilder();
@@ -146,6 +143,197 @@ class VN {
         }
 
 
+        //main LSP loop
+        try {
+            Selector selector = Selector.open();
+ 
+            udp.configureBlocking(false);
+            udp.register(selector, SelectionKey.OP_READ);
+            SocketChannel tcp = on_connection.getChannel();
+            tcp.configureBlocking(false);
+            tcp.register(selector, SelectionKey.OP_READ);
+ 
+            ByteBuffer tcpBuf = ByteBuffer.allocate(1024); 
+            ByteBuffer udpBuf = ByteBuffer.allocate(512);
+            long lastPeriodic = System.currentTimeMillis();
+ 
+            originate_lsp(); //advertise my neighbourood myself initially once
+ 
+            while (true) {
+                selector.select(1000);     //wait for a sec
+ 
+                Iterator<SelectionKey> it=selector.selectedKeys().iterator();
+                while (it.hasNext()) {
+                    SelectionKey key=it.next();
+                    it.remove();
+                    if(key.channel()==tcp){
+                        int n=tcp.read(tcpBuf);
+                        if (n==-1) {
+                            System.out.println("Oracle Node closed the connection");
+                            key.cancel();
+                            continue;
+                        }
+                        handleTcp(tcpBuf);
+                    } else if (key.channel()==udp) {
+                        udpBuf.clear();
+                        SocketAddress from = udp.receive(udpBuf);
+                        if (from==null)continue;
+                        udpBuf.flip();
+                        byte[] data=new byte[udpBuf.remaining()];
+                        udpBuf.get(data);
+                        handleLsp(data,(InetSocketAddress)from);
+                    }
+                }
+ 
+                long current_time=System.currentTimeMillis();
+                if (current_time-lastPeriodic>=PERIOD_MS) {
+                    originate_lsp();printGraph();
+                    lastPeriodic=current_time;
+                }
+            }
+        } catch (IOException e) {
+            System.out.println("Error: " + e.getMessage());
+            System.exit(1);
+        }
     }
 
+    static void originate_lsp() throws IOException {
+        mySeq++;
+        lsdb.put(myId, neighbours);
+        lastSeq.put(myId, mySeq);
+        byte[] pkt = encode_into_lsp(myId, mySeq, neighbours);
+        for (Neighbour n : neighbours) {
+            InetSocketAddress dest = new InetSocketAddress(n.ip, n.port);
+            udp.send(ByteBuffer.wrap(pkt), dest);
+        }
+    }
+    static byte[] encode_into_lsp(char origin,int seq,List<Neighbour> list) throws IOException {
+        ByteBuffer b = ByteBuffer.allocate(6 + list.size() * TUPLE_SIZE);
+        b.put((byte) origin); //1 byte
+        b.putInt(seq); //4 bytes
+        b.put((byte) list.size()); //1 byte
+        for (Neighbour n : list) {
+            b.put((byte) n.node);
+            b.put(InetAddress.getByName(n.ip).getAddress());
+            b.putInt(n.port);
+            b.putInt(n.cost);
+        }
+        return b.array();
+    }
+    static Neighbour readTuple(ByteBuffer b) throws IOException {
+        char node = (char) (b.get() & 0xFF);
+        byte[] ip = new byte[4];
+        b.get(ip);
+        String ipStr = InetAddress.getByAddress(ip).getHostAddress();
+        int port = b.getInt();
+        int cost = b.getInt();
+        return new Neighbour(node, ipStr, port, cost);
+    }
+    static void handleTcp(ByteBuffer tcpBuf) throws IOException {
+        tcpBuf.flip();                                   // switch from writing to reading
+        while (tcpBuf.remaining() >= 1) {
+            int count=tcpBuf.get(tcpBuf.position())&0xFF; //peek the count without reading
+            if (tcpBuf.remaining()<1+count*TUPLE_SIZE) break; // incomplete message so wait for more bytes
+            tcpBuf.get();                                // read the count byte to move the cursor
+            char self = 0;
+            List<Neighbour> list = new ArrayList<>();
+            for (int i = 0; i < count; i++) {
+                Neighbour n = readTuple(tcpBuf);
+                if (n.cost == 0) {
+                    self = n.node;
+                } else {
+                    list.add(n);
+                }
+            }
+ 
+            // debugging purposes
+            // StringBuilder sb = new StringBuilder();
+            // if (self != 0) sb.append(self).append("=0");
+            // for (Neighbour n:list) {
+            //     if (sb.length() > 0) {
+            //         sb.append(",");
+            //     }
+            //     sb.append(n.node).append("=").append(n.cost);
+            // }
+            // System.out.println(sb);
+ 
+            //store the new 
+            if(self!=0){
+                myId=self;
+                neighbours=list;
+                originate_lsp();                             // link state changed: advertise immediately
+            }
+        }
+        tcpBuf.compact();                                //flips back and keeps the left over things
+    }
+    static void handleLsp(byte[] data, InetSocketAddress from) throws IOException {
+        if (data.length<6) return; //safety
+        ByteBuffer b=ByteBuffer.wrap(data);
+        char origin=(char)(b.get()&0xFF);
+        int seq=b.getInt();
+        int count=b.get()&0xFF;
+        if (data.length<6+ (count*TUPLE_SIZE)) return; //corrupted
+        if (origin == myId) return; //ignore loop backs
+        Integer prev_seq_num=lastSeq.get(origin);
+        if (prev_seq_num!=null && seq<=prev_seq_num)return;//outdated
+
+        List<Neighbour> list=new ArrayList<>();
+        for (int i=0;i<count;i++) {
+            list.add(readTuple(b));
+        }
+        lastSeq.put(origin,seq);
+        lsdb.put(origin,list);
+ 
+        String senderIp=from.getAddress().getHostAddress();
+        for (Neighbour n:neighbours) {
+            boolean isSender=n.ip.equals(senderIp) && n.port==from.getPort();
+            //forward packet to everyone else except the neighbour who send you
+            if (!isSender) {
+                InetSocketAddress dest=new InetSocketAddress(n.ip,n.port);
+                udp.send(ByteBuffer.wrap(data),dest);
+            }
+        }
+    }
+    static int costBetween(char a, char b) {
+        List<Neighbour> la=lsdb.get(a);
+        if(la!=null) {
+            for(Neighbour n:la){
+                if(n.node==b)return n.cost;
+            }
+        }
+        List<Neighbour> lb=lsdb.get(b);
+        if(lb!=null){
+            for(Neighbour n:lb){
+                if(n.node==a)return n.cost;
+            }
+        }
+        return -1;
+    }
+    static void printGraph() {
+        int maxIdx = -1;
+        for (Map.Entry<Character, List<Neighbour>>e:lsdb.entrySet()) {
+            maxIdx=Math.max(maxIdx,e.getKey()-'A');
+            for (Neighbour n : e.getValue()) {
+                maxIdx=Math.max(maxIdx,n.node-'A');
+            }
+        }
+        if(maxIdx<1){
+            System.out.println("(graph not known yet)");
+            return;
+        }
+        System.out.println("--- known graph ---");
+        for (int i = 0; i < maxIdx; i++) {
+            StringBuilder sb = new StringBuilder();
+            for (int t = 0; t < i; t++) {
+                sb.append('\t');
+            }
+            for (int j = i + 1; j <= maxIdx; j++) {
+                sb.append(costBetween((char) ('A' + i), (char) ('A' + j)));
+                if (j < maxIdx) {
+                    sb.append('\t');
+                }
+            }
+            System.out.println(sb);
+        }
+    }
 }
