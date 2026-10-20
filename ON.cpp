@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <iostream>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -8,9 +9,12 @@
 #include <fstream>
 #include <filesystem>
 #include <vector>
+#include <thread>
+#include <chrono>
+#include <signal.h>
 
 #define PORT  5000
-#define HOST  "192.168.0.67"
+// #define HOST  "127.0.0.1"
 #define BUFFER_SIZE 6
 
 int numNws(std::string& s){
@@ -43,7 +47,7 @@ int pushRow(std::string& s, std::vector<int>& ans, int zer){
             lws = 0;
         }
     }
-    ans.pop_back();
+    // ans.pop_back();
     return 1;
 }
 
@@ -51,6 +55,7 @@ int make_mat_from_conf(std::ifstream& fil, std::vector<std::vector<int>>& ans){
     ans.clear();
     int i = 0;
     int retval = 0;
+    fil.clear();
     fil.seekg(0,std::ios::beg);
     std::string line;
     while(std::getline(fil, line)){
@@ -71,22 +76,30 @@ int make_mat_from_conf(std::ifstream& fil, std::vector<std::vector<int>>& ans){
     }
     ans.push_back(ans.back());
     ans.back().back() = 0;
-    int N = ans.size();
-    for(int i = 0; i < N; i++){
-        for(int j = i; j < N; j++){
+    for(int i = 0; i < ans.size(); i++){
+        for(int j = i; j < ans[i].size(); j++){
             ans[j][i] = ans[i][j]; 
         }
     }
-    return retval+1;
+    // for(int i = 0; i < ans.size(); i++){
+    //     for(int j = 0; j < ans[i].size(); j++){
+    //         std::cout << ans[i][j] << " ";
+    //     }
+    //     std::cout << "\n";
+    // }
+    // int N = ans.size();
+    // std::cout << "came here" << std::endl;
+    return retval;
 }
 
 
 int main(int argc, char* argv[]){
-    if(argc <= 1){
-        std::cout << "provide config please :3" << std::endl;
+    signal(SIGPIPE, SIG_IGN);
+    if(argc <= 2){
+        std::cout << "provide config and ip please :3" << std::endl;
         return -1;
     }
-    if(argc > 2){
+    if(argc > 3){
         std::cout << "what...?" << std::endl;
         return -1;
     }
@@ -109,15 +122,15 @@ int main(int argc, char* argv[]){
 
     struct sockaddr_in my_addr;
     my_addr.sin_port = htons(PORT);
-    my_addr.sin_addr.s_addr = inet_addr(HOST);
+    my_addr.sin_addr.s_addr = inet_addr(argv[2]);
     my_addr.sin_family = AF_INET;
     memset(&(my_addr.sin_zero),'\0',sizeof(my_addr.sin_zero));
 
     bind(Servfd, (sockaddr *)&my_addr, sizeof(sockaddr));
     listen(Servfd,5);
     std::vector<int> cli_socks;
-    std::vector<int> cli_ips;
-    std::vector<int> cli_ports;
+    std::vector<uint32_t> cli_ips;
+    std::vector<uint16_t> cli_ports;
 
     while(1){
         fd_set conne;
@@ -125,12 +138,12 @@ int main(int argc, char* argv[]){
         FD_SET(Servfd, &conne);
         int maxfd = Servfd;
 
-        for(auto it: cli_socks){
-            FD_SET(it, &conne);
-            if(it > maxfd){
-                maxfd = it;
-            }
-        }
+        // for(auto it: cli_socks){
+        //     FD_SET(it, &conne);
+        //     if(it > maxfd){
+        //         maxfd = it;
+        //     }
+        // }
 
         int activity = select(maxfd+1, &conne, nullptr, nullptr, nullptr);
 
@@ -141,10 +154,10 @@ int main(int argc, char* argv[]){
 
             if(new_socket >= 0){
                 cli_socks.push_back(new_socket);
-                char buffer[BUFFER_SIZE];
-                int bytes_read = read(new_socket, (void *)&buffer, BUFFER_SIZE-1);
-                cli_ips.push_back(buffer[0] << 24 + buffer[1] << 16 + buffer[2] << 8 + buffer[3]);
-                cli_ports.push_back(buffer[4] << 8 + buffer[5]);
+                unsigned char buffer[BUFFER_SIZE];
+                int bytes_read = read(new_socket, (void *)&buffer, BUFFER_SIZE);
+                cli_ips.push_back((buffer[0] << 24) + (buffer[1] << 16) + (buffer[2] << 8) + buffer[3]);
+                cli_ports.push_back((buffer[4] << 8) + buffer[5]);
                 std::cout << "accepted: " << (int)buffer[0] << "." << (int)buffer[1] << "." << (int)buffer[2] << "." << (int)buffer[3] << "." << ":" << cli_ports.back() << " sockfd:" << new_socket;
                 if(cli_socks.size() == N){
                     break;
@@ -163,23 +176,30 @@ int main(int argc, char* argv[]){
         char c = 0;
         c += numNib;
         send(cli_socks[i], &c, 1, 0);
-        for(int j = 0; i < adjMat[i].size(); j++){
+        for(int j = 0; j < adjMat[i].size(); j++){
             if(adjMat[i][j] >= 0){
                 char c = 'A';
                 c += j;
-                send(cli_socks[i], &c, 1, 0);
-                send(cli_socks[i], &cli_ips[j], 4, 0);
-                send(cli_socks[i], &cli_ports[j], 4, 0);
+                uint32_t net_ip = htonl(cli_ips[j]);
+                uint32_t net_pot = htonl(cli_ports[j]);
+                uint32_t net_cost = htonl(adjMat[i][j]);
+                char tuple_buf[13];
+                tuple_buf[0] = c;
+                memcpy(tuple_buf + 1, &net_ip, 4);
+                memcpy(tuple_buf + 5, &net_pot, 4);
+                memcpy(tuple_buf + 9, &net_cost, 4);
+                send(cli_socks[i], tuple_buf, 13, 0);
             }
         }
     }
 
     while(1){
+        std::this_thread::sleep_for(std::chrono::seconds(1));
         std::vector<std::vector<int>> newmat;
         make_mat_from_conf(conf, newmat);
         bool change = 0;
-        for(int i = 0; i < N; i++){
-            for(int j = 0; j < N; j++){
+        for(int i = 0; i < newmat.size(); i++){
+            for(int j = 0; j < newmat[i].size(); j++){
                 if(newmat[i][j] != adjMat[i][j]){
                     change = 1;
                     adjMat[i][j] = newmat[i][j];
@@ -188,6 +208,7 @@ int main(int argc, char* argv[]){
         }
 
         if(change){
+            if(newmat.size() < N) continue;
             for(int i = 0; i < cli_socks.size(); i++){
                 int numNib = 0;
                 for(auto it : adjMat[i]){
@@ -198,13 +219,19 @@ int main(int argc, char* argv[]){
                 char c = 0;
                 c += numNib;
                 send(cli_socks[i], &c, 1, 0);
-                for(int j = 0; i < adjMat[i].size(); j++){
+                for(int j = 0; j < adjMat[i].size(); j++){
                     if(adjMat[i][j] >= 0){
                         char c = 'A';
                         c += j;
-                        send(cli_socks[i], &c, 1, 0);
-                        send(cli_socks[i], &cli_ips[j], 4, 0);
-                        send(cli_socks[i], &cli_ports[j], 4, 0);
+                        uint32_t net_ip = htonl(cli_ips[j]);
+                        uint32_t net_pot = htonl(cli_ports[j]);
+                        uint32_t net_cost = htonl(adjMat[i][j]);
+                        char tuple_buf[13];
+                        tuple_buf[0] = c;
+                        memcpy(tuple_buf + 1, &net_ip, 4);
+                        memcpy(tuple_buf + 5, &net_pot, 4);
+                        memcpy(tuple_buf + 9, &net_cost, 4);
+                        send(cli_socks[i], tuple_buf, 13, 0);
                     }
                 }
             }

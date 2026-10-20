@@ -83,14 +83,22 @@ class VN {
 
         
         //UDP connection for myself
-        DatagramSocket my_udp_socket=null;
-        try{
-            my_udp_socket = new DatagramSocket(my_udp_port);
-        }
-        catch (SocketException e) {
-            System.out.println("UDP binding failed");
-        }
+        // DatagramSocket my_udp_socket=null;
+        // try{
+        //     my_udp_socket = new DatagramSocket(my_udp_port);
+        // }
+        // catch (SocketException e) {
+        //     System.out.println("UDP binding failed");
+        // }
         
+        try {
+            udp = DatagramChannel.open();
+            udp.bind(new InetSocketAddress(my_udp_port));
+        } catch (IOException e) {
+            System.out.println("UDP binding failed");
+            System.exit(1);
+        }
+
 
         // TCP connection to the server
         TCPConnection on_connection = null;
