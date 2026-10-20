@@ -108,6 +108,7 @@ int main(int argc, char* argv[]){
     std::ifstream conf(argv[1]);
     std::vector<std::vector<int>> adjMat;
     int N = make_mat_from_conf(conf, adjMat);
+    std::cout << N << std::endl;
     for(int i = 0; i < N; i++){
         for(int j = 0; j < N; j++){
             std::cout << adjMat[i][j] << " ";
@@ -144,7 +145,9 @@ int main(int argc, char* argv[]){
         //         maxfd = it;
         //     }
         // }
-
+        if(cli_socks.size() == N){
+            break;
+        }
         int activity = select(maxfd+1, &conne, nullptr, nullptr, nullptr);
 
         if(FD_ISSET(Servfd, &conne)){
@@ -159,9 +162,6 @@ int main(int argc, char* argv[]){
                 cli_ips.push_back((buffer[0] << 24) + (buffer[1] << 16) + (buffer[2] << 8) + buffer[3]);
                 cli_ports.push_back((buffer[4] << 8) + buffer[5]);
                 std::cout << "accepted: " << (int)buffer[0] << "." << (int)buffer[1] << "." << (int)buffer[2] << "." << (int)buffer[3] << "." << ":" << cli_ports.back() << " sockfd:" << new_socket;
-                if(cli_socks.size() == N){
-                    break;
-                }
             }
         }
     }
