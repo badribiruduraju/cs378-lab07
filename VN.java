@@ -303,41 +303,60 @@ class VN {
         }
     }
     static int costBetween(char a, char b) {
+        int ab=-1,ba=-1;
         List<Neighbour> la=lsdb.get(a);
-        if(la!=null) {
-            for(Neighbour n:la){
-                if(n.node==b)return n.cost;
-            }
+        if (la!=null){
+            for (Neighbour n:la)if (n.node==b)ab=n.cost;
         }
         List<Neighbour> lb=lsdb.get(b);
-        if(lb!=null){
-            for(Neighbour n:lb){
-                if(n.node==a)return n.cost;
-            }
+        if (lb!=null){
+            for (Neighbour n:lb)if(n.node==a)ba=n.cost;
         }
-        return -1;
+        if (ab==-1||ba==-1) return -1;
+        return ab;
     }
     static void printGraph() {
-        int maxIdx = -1;
-        for (Map.Entry<Character, List<Neighbour>>e:lsdb.entrySet()) {
-            maxIdx=Math.max(maxIdx,e.getKey()-'A');
-            for (Neighbour n : e.getValue()) {
-                maxIdx=Math.max(maxIdx,n.node-'A');
+        boolean[] known=new boolean[26];
+        for (Map.Entry<Character, List<Neighbour>> e : lsdb.entrySet()) {
+            known[e.getKey()-'A']=true;
+            for (Neighbour n:e.getValue())known[n.node-'A']=true;
+        }
+
+        char[] nodes=new char[26];
+        int m=0;
+        for (int i = 0; i < 26; i++) {
+            if (known[i]) {
+                nodes[m]=(char)('A'+i);
+                m++;
             }
         }
-        if(maxIdx<1){
-            System.out.println("(graph not known yet)");
+
+        System.out.println("--- known graph at node " + myId + " ---");
+        if (m < 2) {
+            System.out.println("\t" + myId);
+            System.out.println(myId + "\t0");
             return;
         }
-        System.out.println("--- known graph ---");
-        for (int i = 0; i < maxIdx; i++) {
+
+        //print all knows nodes to act as a header
+        StringBuilder header = new StringBuilder("\t");
+        for (int j = 1; j < m; j++) {
+            header.append(nodes[j]);
+            if (j < m - 1) {
+                header.append('\t');
+            }
+        }
+        System.out.println(header);
+        // print the upper triangle
+        for (int i = 0; i < m - 1; i++) {
             StringBuilder sb = new StringBuilder();
+            sb.append(nodes[i]).append('\t');
             for (int t = 0; t < i; t++) {
                 sb.append('\t');
             }
-            for (int j = i + 1; j <= maxIdx; j++) {
-                sb.append(costBetween((char) ('A' + i), (char) ('A' + j)));
-                if (j < maxIdx) {
+            for (int j = i + 1; j < m; j++) {
+                sb.append(costBetween(nodes[i], nodes[j]));
+                if (j < m - 1) {
                     sb.append('\t');
                 }
             }
