@@ -211,6 +211,7 @@ class VN {
         for (Neighbour n : neighbours) {
             InetSocketAddress dest = new InetSocketAddress(n.ip, n.port);
             udp.send(ByteBuffer.wrap(pkt), dest);
+            udp.send(ByteBuffer.wrap(pkt), dest);
         }
     }
     static byte[] encode_into_lsp(char origin,int seq,List<Neighbour> list) throws IOException {
@@ -227,13 +228,13 @@ class VN {
         return b.array();
     }
     static Neighbour readTuple(ByteBuffer b) throws IOException {
-        char node = (char) (b.get() & 0xFF);
-        byte[] ip = new byte[4];
+        char node=(char)(b.get() & 0xFF);
+        byte[] ip=new byte[4];
         b.get(ip);
-        String ipStr = InetAddress.getByAddress(ip).getHostAddress();
-        int port = b.getInt();
-        int cost = b.getInt();
-        return new Neighbour(node, ipStr, port, cost);
+        String ipStr=InetAddress.getByAddress(ip).getHostAddress();
+        int port=b.getInt();
+        int cost=b.getInt();
+        return new Neighbour(node,ipStr,port,cost);
     }
     static void handleTcp(ByteBuffer tcpBuf) throws IOException {
         tcpBuf.flip();                                   // switch from writing to reading
@@ -296,6 +297,7 @@ class VN {
             //forward packet to everyone else except the neighbour who send you
             if (!isSender) {
                 InetSocketAddress dest=new InetSocketAddress(n.ip,n.port);
+                udp.send(ByteBuffer.wrap(data),dest);
                 udp.send(ByteBuffer.wrap(data),dest);
             }
         }
