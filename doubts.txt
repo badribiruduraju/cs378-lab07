@@ -1,5 +1,0 @@
-what talks with what with what protocol
-
-for ease of configuration of each VN, dynamically,instead of having to configure each of them individually via possibly command-line
-
-After receiving the neighbourhood information from the ON, each VN exchanges link-state messages using UDP sockets, as per a link-state protocol.
