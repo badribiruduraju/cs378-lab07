@@ -11,10 +11,7 @@ class Neighbour {
     int cost;
 
     Neighbour(char node, String ip, int port, int cost) {
-        this.node = node;
-        this.ip = ip;
-        this.port = port;
-        this.cost = cost;
+        this.node=node;this.ip=ip;this.port=port;this.cost=cost;
     }
 }
 
