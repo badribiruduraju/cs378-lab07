@@ -173,11 +173,13 @@ int main(int argc, char* argv[]){
         }
     }
 
-    std::cout << "came out\n"; 
+    // std::cout << "came out\n"; 
 
+    int first = 0;
     while(1){
+
         std::vector<std::vector<int>> newmat;
-        std::cout << "trying...\n";
+        // std::cout << "trying...\n";
 
         conf.close(); 
         conf.open(argv[1]);
@@ -194,7 +196,7 @@ int main(int argc, char* argv[]){
             }
         }
         
-        if(change){
+        if(change || first == 0){
             std::cout << "=======================\n";
             for(int i = 0; i < N; i++){
                 for(int j = 0; j < N; j++){
@@ -228,6 +230,7 @@ int main(int argc, char* argv[]){
                     }
                 }
             }
+            first = 1;
         }
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
