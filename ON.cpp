@@ -168,7 +168,7 @@ int main(int argc, char* argv[]){
                 int bytes_read = read(new_socket, (void *)&buffer, BUFFER_SIZE);
                 cli_ips.push_back((buffer[0] << 24) + (buffer[1] << 16) + (buffer[2] << 8) + buffer[3]);
                 cli_ports.push_back((buffer[4] << 8) + buffer[5]);
-                std::cout << "accepted: " << (int)buffer[0] << "." << (int)buffer[1] << "." << (int)buffer[2] << "." << (int)buffer[3] << "." << ":" << cli_ports.back() << " sockfd:" << new_socket << "\n";
+                std::cout << "accepted: " << (int)buffer[0] << "." << (int)buffer[1] << "." << (int)buffer[2] << "." << (int)buffer[3] << ":" << cli_ports.back() << " sockfd:" << new_socket << "\n";
             }
         }
     }
