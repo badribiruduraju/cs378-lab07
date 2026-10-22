@@ -48,10 +48,11 @@ int pushRow(std::string& s, std::vector<int>& ans, int zer){
         }
     }
     // ans.pop_back();
-    return 1;
+    return ans.size();
 }
 
 int make_mat_from_conf(std::ifstream& fil, std::vector<std::vector<int>>& ans){
+    int lr = 0;
     ans.clear();
     int i = 0;
     int retval = 0;
@@ -67,7 +68,8 @@ int make_mat_from_conf(std::ifstream& fil, std::vector<std::vector<int>>& ans){
         }
         else{
             ans.push_back({});
-            pushRow(line, ans[i], i);
+            if(lr != 0 || lr != pushRow(line, ans[i], i))
+                return -1;
             if(i == 0){
                 retval = ans[0].size();
             }
@@ -196,7 +198,7 @@ int main(int argc, char* argv[]){
     while(1){
         std::this_thread::sleep_for(std::chrono::seconds(1));
         std::vector<std::vector<int>> newmat;
-        make_mat_from_conf(conf, newmat);
+        if(make_mat_from_conf(conf, newmat) == -1) continue;
         bool change = 0;
         for(int i = 0; i < newmat.size(); i++){
             for(int j = 0; j < newmat[i].size(); j++){
