@@ -32,8 +32,6 @@ class TCPConnection implements AutoCloseable {
             channel.write(b);
         }
     }
- 
-    //read n bytes, wait until you read n (works only while the channel is still in blocking mode)
     public byte[] receiveBytes(int n) throws IOException {
         ByteBuffer b = ByteBuffer.allocate(n);
         while (b.hasRemaining()) {

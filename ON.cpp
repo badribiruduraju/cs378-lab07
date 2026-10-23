@@ -82,6 +82,7 @@ int make_mat_from_conf(std::ifstream& fil, std::vector<std::vector<int>>& ans){
             i++;
         }
     }
+    if(ans.empty()) return -1;
     ans.push_back(ans.back());
     ans.back().back() = 0;
     for(int i = 0; i < ans.size(); i++){
@@ -123,8 +124,13 @@ int main(int argc, char* argv[]){
     my_addr.sin_family = AF_INET;
     memset(&(my_addr.sin_zero),'\0',sizeof(my_addr.sin_zero));
 
-    bind(Servfd, (sockaddr *)&my_addr, sizeof(sockaddr));
-    listen(Servfd,5);
+    if(bind(Servfd, (sockaddr *)&my_addr, sizeof(sockaddr)) == -1){
+        std::cout << "binding failed\n";
+    }
+
+    if(listen(Servfd,5) == -1){
+        std::cout << "listen failed\n";
+    };
     std::vector<int> cli_socks;
     std::vector<uint32_t> cli_ips;
     std::vector<uint16_t> cli_ports;
@@ -170,6 +176,9 @@ int main(int argc, char* argv[]){
                 cli_ports.push_back((buffer[4] << 8) + buffer[5]);
                 std::cout << "accepted: " << (int)buffer[0] << "." << (int)buffer[1] << "." << (int)buffer[2] << "." << (int)buffer[3] << ":" << cli_ports.back() << " sockfd:" << new_socket << "\n";
             }
+            else{
+                std::cout << "accept failed!\n";
+            }
         }
     }
 
@@ -185,7 +194,10 @@ int main(int argc, char* argv[]){
         conf.open(argv[1]);
 
         int temp = make_mat_from_conf(conf, newmat);
-        if(temp == -1 || temp != N) continue;
+        if(temp == -1 || temp != N){
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            continue;
+        }
         bool change = 0;
         for(int i = 0; i < newmat.size(); i++){
             for(int j = 0; j < newmat[i].size(); j++){
