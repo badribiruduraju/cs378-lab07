@@ -133,6 +133,7 @@ class VN {
                 if (cost==0) myId=node;                            // the zero-cost tuple is myself
                 else neighbours.add(new Neighbour(node,ip,port,cost));
             }
+            printLinkState(myId,neighbours); 
             //Debugging purposes
             // StringBuilder sb = new StringBuilder();
             // sb.append(myId).append("=0");
@@ -200,7 +201,14 @@ class VN {
             System.exit(1);
         }
     }
-
+static void printLinkState(char id, List<Neighbour> list) {
+    StringBuilder sb=new StringBuilder();
+    sb.append(id).append("=0");
+    for (Neighbour n:list) {
+        sb.append(",").append(n.node).append("=").append(n.cost);
+    }
+    System.out.println(sb);
+}
     static void originate_lsp() throws IOException {
         mySeq++;
         lsdb.put(myId, neighbours);
@@ -266,6 +274,7 @@ class VN {
             if(self!=0){
                 myId=self;
                 neighbours=list;
+                printLinkState(myId,neighbours); 
                 originate_lsp();                             // link state changed: advertise immediately
             }
         }
